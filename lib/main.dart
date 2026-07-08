@@ -122,7 +122,9 @@ class _NoteListScreenState extends State<NoteListScreen> {
               itemBuilder: (context, index) {
                 final note = _notes[index];
                 return Semantics(
-                  label: 'Poznámka: ${note.content}, vytvořeno ${DateFormat('HH:mm').format(note.createdAt)}, stav: ${note.isCompleted ? 'splněno' : 'nesplněno'}',
+                  label: 'Poznámka: ${note.content}, vytvořeno ${DateFormat('HH:mm').format(note.createdAt)}. ${note.isCompleted ? 'Splněno' : 'Nesplněno, je potřeba dokončit.'}',
+                  button: true,
+                  onTap: () => _toggleNoteCompletion(index),
                   child: CheckboxListTile(
                     title: Text(note.content),
                     subtitle: Text(DateFormat('HH:mm, dd.MM.yyyy').format(note.createdAt)),
@@ -130,7 +132,8 @@ class _NoteListScreenState extends State<NoteListScreen> {
                     onChanged: (value) => _toggleNoteCompletion(index),
                     secondary: IconButton(
                       icon: const Icon(Icons.volume_up),
-                      onPressed: () => _ttsService.speak('${note.content}, vytvořeno ${DateFormat('HH:mm').format(note.createdAt)}'),
+                      tooltip: 'Předčíst poznámku',
+                      onPressed: () => _ttsService.speak('${note.content}, vytvořeno ${DateFormat('HH:mm').format(note.createdAt)}, stav: ${note.isCompleted ? 'splněno' : 'nesplněno'}'),
                     ),
                   ),
                 );
