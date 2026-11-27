@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'announcer.dart';
+import 'app_settings.dart';
 import 'note.dart';
+import 'settings_screen.dart';
 import 'tts_service.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AppSettings.instance.load();
   runApp(const MyApp());
 }
 
@@ -70,7 +75,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         useMaterial3: true,
       ),
       themeMode: ThemeMode.system,
-      home: const NoteListScreen(),
+      home: Stack(
+      children: [
+        const Positioned.fill(child: NoteListScreen()),
+        // Skrytá živá oblast — čtečky obrazovky (nvda, TalkBack)
+        // při změně hlášení přečtou text, vizuálně se nic nezobrazí.
+        Positioned(
+          left: -200,
+          top: -200,
+          child: const Opacity(
+            opacity: 0,
+            child: LiveAnnouncementRegion(),
+          ),
+        ),
+      ],
+    ),
     );
   }
 }
@@ -221,6 +240,19 @@ class _NoteListScreenState extends State<NoteListScreen> {
       appBar: AppBar(
         title: const Text('Můj poznámkovník'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SettingsScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.settings),
+            tooltip: 'Nastavení',
+          ),
+        ],
       ),
       body: Column(
         children: [

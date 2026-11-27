@@ -2,11 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:mluvici_pristupny_poznamkovnik/app_settings.dart';
 import 'package:mluvici_pristupny_poznamkovnik/main.dart';
+import 'package:mluvici_pristupny_poznamkovnik/settings_screen.dart';
 
 void main() {
   const MethodChannel ttsChannel = MethodChannel('flutter_tts');
+  const MethodChannel a11yChannel =
+      MethodChannel('com.example.mluvici_pristupny_poznamkovnik/accessibility');
   final List<String> spoken = [];
+  /// Hlášky předané čtečce obrazovky (metoda announce).
+  final List<String> announced = [];
+
+  /// Po každém testu vrací nastavení do původního stavu,
+  /// aby se nešířilo mezi testy.
+  tearDown(() {
+    AppSettings.instance.setUseScreenReaderAnnouncements(false);
+  });
 
   /// Nahradí TTS kanál falešnou verzí a zachytí všechna čtená hlášení.
   Future<void> mockTts(WidgetTester tester) async {
@@ -18,6 +30,29 @@ void main() {
           spoken.add(call.arguments as String);
         }
         return 1;
+      },
+    );
+  }
+
+  /// Nahradí kanál přístupnosti falešnou verzí.
+  /// [screenReaderActive] rozhoduje, zda čtečka obrazovky „běží“,
+  /// [announceSucceeds] zda předání hlášky na ni dopadne.
+  void mockAccessibility(
+    WidgetTester tester, {
+    required bool screenReaderActive,
+    bool announceSucceeds = true,
+  }) {
+    announced.clear();
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      a11yChannel,
+      (MethodCall call) async {
+        if (call.method == 'screenReaderActive') return screenReaderActive;
+        if (call.method == 'announce') {
+          final args = call.arguments as Map<Object?, Object?>;
+          announced.add(args['text'] as String);
+          return announceSucceeds;
+        }
+        return null;
       },
     );
   }
@@ -138,5 +173,83 @@ void main() {
     await tester.tap(find.text('Zrušit'));
     await tester.pump();
     expect(find.text('Káva se mlékem'), findsOneWidget);
+  });
+
+  testWidgets('Zapnuta čtečka: hláška jde čtečce obrazovky, ne TTS',
+      (WidgetTester tester) async {
+    await mockTts(tester);
+    mockAccessibility(tester, screenReaderActive: true);
+    AppSettings.instance.setUseScreenReaderAnnouncements(true);
+
+    await tester.pumpWidget(const MyApp());
+    await addNote(tester, 'Zpráva pro čtečku');
+
+    expect(
+      announced,
+      contains('Poznámka přidána: Zpráva pro čtečku'),
+    );
+    expect(
+      spoken,
+      isNot(contains('Poznámka přidána: Zpráva pro čtečku')),
+    );
+  });
+
+  testWidgets('Zapnuta čtečka, ale neběží: hláška je čtená vestsaveným hlasem',
+      (WidgetTester tester) async {
+    await mockTts(tester);
+    mockAccessibility(tester, screenReaderActive: false);
+    AppSettings.instance.setUseScreenReaderAnnouncements(true);
+
+    await tester.pumpWidget(const MyApp());
+    await addNote(tester, 'Zpět na hlas');
+
+    expect(announced, isEmpty);
+    expect(spoken, contains('Poznámka přidána: Zpět na hlas'));
+  });
+
+  testWidgets('Předání čtečce selže: hláška je čtená vestsaveným hlasem',
+      (WidgetTester tester) async {
+    await mockTts(tester);
+    mockAccessibility(
+      tester,
+      screenReaderActive: true,
+      announceSucceeds: false,
+    );
+    AppSettings.instance.setUseScreenReaderAnnouncements(true);
+
+    await tester.pumpWidget(const MyApp());
+    await addNote(tester, 'Selhalo odeslání');
+
+    expect(announced, contains('Poznámka přidána: Selhalo odeslání'));
+    expect(spoken, contains('Poznámka přidána: Selhalo odeslání'));
+  });
+
+  testWidgets('Přepínač v nastavení zapne a vypne hlášení čtečkou',
+      (WidgetTester tester) async {
+    await mockTts(tester);
+    mockAccessibility(tester, screenReaderActive: false);
+    AppSettings.instance.setUseScreenReaderAnnouncements(false);
+
+    await tester.pumpWidget(MaterialApp(home: const SettingsScreen()));
+
+    final switchFinder = find.byType(Switch);
+    expect(AppSettings.instance.useScreenReaderAnnouncements, isFalse);
+    expect(find.text('Nastavení'), findsOneWidget);
+
+    await tester.tap(switchFinder);
+    await tester.pump();
+    expect(AppSettings.instance.useScreenReaderAnnouncements, isTrue);
+    expect(
+      spoken.join(' | '),
+      contains('Odesílání hlášek přes čtečku obrazovky zapnuto.'),
+    );
+
+    await tester.tap(switchFinder);
+    await tester.pump();
+    expect(AppSettings.instance.useScreenReaderAnnouncements, isFalse);
+    expect(
+      spoken.join(' | '),
+      contains('Odesílání hlášek přes čtečku obrazovky vypnuto.'),
+    );
   });
 }
